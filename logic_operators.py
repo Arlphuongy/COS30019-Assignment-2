@@ -1,7 +1,8 @@
 import re
 from itertools import product
 
-universal_variables = {
+# Mapping of universal logical operators to internal symbols
+operator_mapping = {
     '^': '&', '∧': '&',
     '|': '||',
     '¬': '~', '!': '~',
@@ -10,180 +11,185 @@ universal_variables = {
     '<=>': '<->', '↔': '<->',
 }
 
-def operator_table(part, kb, facts):
-    for variable, symbol in universal_variables.items():
-        part = part.replace(variable, symbol)
-    if '=>' in part:
-        parts = part.split('=>')
+def operator_table(expression, knowledge_base, facts_set):
+    # Replacing universal operators with internal symbols
+    for variable, symbol in operator_mapping.items():
+        expression = expression.replace(variable, symbol)
+    
+    if '=>' in expression:
+        parts = expression.split('=>')
         if '&' in parts[0]:
-            left = tuple([c.strip() for c in parts[0].split('&')])
-            right = parts[1].strip()
-            kb.append((left, right))
+            left_side = tuple([term.strip() for term in parts[0].split('&')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side))
         elif '||' in parts[0]:
-            left = tuple(['*' + c.strip() if c.strip() else c.strip() for c in parts[0].split('||')])
-            right = parts[1].strip()
-            kb.append((left, right))
+            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side))
         elif '~' in parts[0]:
             fact = parts[0].strip('~').strip()
             if fact:
-                kb.append(fact, False)
+                knowledge_base.append((fact, False))
         else:
-            left = tuple(c.strip() for c in parts[0].split('=>'))
-            right = parts[1].strip()
-            kb.append((left, right))
-    elif '<=' in part:
-        parts = part.split('<=')
+            left_side = tuple(term.strip() for term in parts[0].split('=>'))
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side))
+    elif '<=' in expression:
+        parts = expression.split('<=')
         if '&' in parts[1]:
-            right = tuple([c.strip() for c in parts[1].split('&')])
-            left = parts[0].strip()
-            kb.append((right, left))
+            right_side = tuple([term.strip() for term in parts[1].split('&')])
+            left_side = parts[0].strip()
+            knowledge_base.append((right_side, left_side))
         elif '||' in parts[1]:
-            right = tuple(['*' + c.strip() if c.strip() else c.strip() for c in parts[1].split('||')])
-            left = parts[0].strip()
-            kb.append((right, left))
+            right_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[1].split('||')])
+            left_side = parts[0].strip()
+            knowledge_base.append((right_side, left_side))
         elif '~' in parts[1]:
             fact = parts[0].strip('~').strip()
             if fact:
-                kb.append(fact, False)
+                knowledge_base.append((fact, False))
         else:
-            right = tuple(c.strip() for c in parts[1].split('<=')) 
-            left = parts[0].strip()
-            kb.append((right, left))
-    elif '<->' in part:
-        if '&' in part:
-            parts = part.split('<->')
-            left = tuple([c.strip() for c in parts[0].split('&')])
-            right = parts[1].strip()
-            kb.append((left, right))
-            kb.append((tuple(right.split('&')), left))
-        elif '||' in part:
-            parts = part.split('<->')
-            left = tuple(['*' + c.strip() if c.strip() else c.strip() for c in parts[0].split('||')])
-            right = parts[1].strip()
-            kb.append((left, right))
-            kb.append((tuple(right.split('||')), left))
-        elif '~' in part:
-            fact = part.strip('~').strip()
+            right_side = tuple(term.strip() for term in parts[1].split('<=')) 
+            left_side = parts[0].strip()
+            knowledge_base.append((right_side, left_side))
+    elif '<->' in expression:
+        if '&' in expression:
+            parts = expression.split('<->')
+            left_side = tuple([term.strip() for term in parts[0].split('&')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side))
+            knowledge_base.append((tuple(right_side.split('&')), left_side))
+        elif '||' in expression:
+            parts = expression.split('<->')
+            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side))
+            knowledge_base.append((tuple(right_side.split('||')), left_side))
+        elif '~' in expression:
+            fact = expression.strip('~').strip()
             if fact:
-                kb.append(fact, False)
+                knowledge_base.append((fact, False))
         else:
-            parts = part.split('<->')
-            left = tuple([c.strip() for c in parts[0].split('<->')])
-            right = parts[1].strip()
-            kb.append((left, right))
-            kb.append((tuple(right.split('<->')), left))
+            parts = expression.split('<->')
+            left_side = tuple([term.strip() for term in parts[0].split('<->')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side))
+            knowledge_base.append((tuple(right_side.split('<->')), left_side))
     else:
-        facts.add(part)
-        facts.discard('')
-    return part, facts 
+        facts_set.add(expression)
+        facts_set.discard('')
+    
+    return expression, facts_set 
 
-def operator_chain(part, method, kb, facts):
-    for variable, symbol in universal_variables.items():
-        part = part.replace(variable, symbol)
-    if '(' in part or '||' in part or '~' in part:
+def operator_chain(expression, method, knowledge_base, facts_set):
+    for variable, symbol in operator_mapping.items():
+        expression = expression.replace(variable, symbol)
+    
+    if '(' in expression or '||' in expression or '~' in expression:
         print("Generic KB is not applicable to FC and BC method.")
         return
-    if '=>' in part:
-        left, right = part.split('=>')
-        left_parts = left.split('&')
-        condition = tuple(c.strip() for c in left_parts)
+    if '=>' in expression:
+        left_side, right_side = expression.split('=>')
+        left_parts = left_side.split('&')
+        condition = tuple(term.strip() for term in left_parts)
         if method == "FC":
-            kb[condition] = right.strip()
+            knowledge_base[condition] = right_side.strip()
         elif method == "BC":
-            kb.setdefault(right.strip(), []).append(condition)
-    elif '<=' in part:
-        right, left = part.split('<=')
-        right_parts = right.split('&')
-        condition = tuple(c.strip() for c in right_parts)
+            knowledge_base.setdefault(right_side.strip(), []).append(condition)
+    elif '<=' in expression:
+        right_side, left_side = expression.split('<=')
+        right_parts = right_side.split('&')
+        condition = tuple(term.strip() for term in right_parts)
         if method == "FC":
-            kb[condition] = left.strip()
+            knowledge_base[condition] = left_side.strip()
         elif method == "BC":
-            kb.setdefault(left.strip(), []).append(condition)
-    elif '<->' in part:
-        left, right = part.split('<->')
-        left_parts = left.split('&')
-        condition_left = tuple(c.strip() for c in left_parts)
-        right_parts = right.split('&')
-        condition_right = tuple(c.strip() for c in right_parts)
+            knowledge_base.setdefault(left_side.strip(), []).append(condition)
+    elif '<->' in expression:
+        left_side, right_side = expression.split('<->')
+        left_parts = left_side.split('&')
+        condition_left = tuple(term.strip() for term in left_parts)
+        right_parts = right_side.split('&')
+        condition_right = tuple(term.strip() for term in right_parts)
         if method == "FC":
-            kb[condition_left] = right.strip()
-            kb[condition_right] = left.strip()
+            knowledge_base[condition_left] = right_side.strip()
+            knowledge_base[condition_right] = left_side.strip()
         elif method == "BC":
-            kb.setdefault(right.strip(), []).append(condition_left)
-            kb.setdefault(left.strip(), []).append(condition_right)
+            knowledge_base.setdefault(right_side.strip(), []).append(condition_left)
+            knowledge_base.setdefault(left_side.strip(), []).append(condition_right)
     else:
-        facts.add(part)
-    return kb, facts
+        facts_set.add(expression)
+    return knowledge_base, facts_set
 
-def generic_operator_table(part, kb, facts, level=0):
-    for variable, symbol in universal_variables.items():
-        part = part.replace(variable, symbol)
-    if '(' in part:
+def generic_operator_table(expression, knowledge_base, facts_set, level=0):
+    for variable, symbol in operator_mapping.items():
+        expression = expression.replace(variable, symbol)
+    
+    if '(' in expression:
         level += 1
-        while '(' in part:
-            inner_parts = re.findall(r'\(([^()]+)\)', part)
-            for inner_part in inner_parts:
-                generic_operator_table(inner_part, kb, facts, level)
-            part = re.sub(r'\(([^()]+)\)', '@', part)
-        parts = part.split('=>', 1)
+        while '(' in expression:
+            inner_expressions = re.findall(r'\(([^()]+)\)', expression)
+            for inner_expression in inner_expressions:
+                generic_operator_table(inner_expression, knowledge_base, facts_set, level)
+            expression = re.sub(r'\(([^()]+)\)', '@', expression)
+        
+        parts = expression.split('=>', 1)
         if '&' in parts[0]:
-            left = tuple([c.strip() for c in parts[0].split('&')])
-            right = parts[1].strip()
-            kb.append((left, right, level))
+            left_side = tuple([term.strip() for term in parts[0].split('&')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side, level))
         elif '||' in parts[0]:
-            left = tuple(['*' + c.strip() if c.strip() else c.strip() for c in parts[0].split('||')])
-            right = parts[1].strip()
-            kb.append((left, right, level)) 
+            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side, level)) 
         elif '~' in parts[0]:
             fact = parts[0].strip('~').strip()
             if fact:
-                kb.append(fact, False, level)
+                knowledge_base.append((fact, False, level))
         else:
-            left = tuple(c.strip() for c in parts[0].split('=>'))
-            right = parts[1].strip()
-            kb.append((left, right, level))
-    elif '<=' in part:
-        parts = part.split('<=', 1)
+            left_side = tuple(term.strip() for term in parts[0].split('=>'))
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side, level))
+    elif '<=' in expression:
+        parts = expression.split('<=', 1)
         if '&' in parts[1]:
-            right = tuple([c.strip() for c in parts[1].split('&')])
-            left = parts[0].strip()
-            kb.append((right, left), level)
+            right_side = tuple([term.strip() for term in parts[1].split('&')])
+            left_side = parts[0].strip()
+            knowledge_base.append((right_side, left_side, level))
         elif '||' in parts[1]:
-            right = tuple(['*' + c.strip() if c.strip() else c.strip() for c in parts[1].split('||')])
-            left = parts[0].strip()
-            kb.append((right, left), level)
+            right_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[1].split('||')])
+            left_side = parts[0].strip()
+            knowledge_base.append((right_side, left_side, level))
         elif '~' in parts[1]:
             fact = parts[0].strip('~').strip()
             if fact:
-                kb.append(fact, False, level)
+                knowledge_base.append((fact, False, level))
         else:
-            right = tuple(c.strip() for c in parts[1].split('<=')) 
-            left = parts[0].strip()
-            kb.append((right, left, level))
-    elif '<->' in part:
-        if '&' in part:
-            parts = part.split('<->', 1)
-            left = tuple([c.strip() for c in parts[0].split('&')])
-            right = parts[1].strip()
-            kb.append((left, right, level))
-            kb.append((tuple(right.split('&')), left, level))
-        elif '||' in part:
-            parts = part.split('<->', 1)
-            left = tuple(['*' + c.strip() if c.strip() else c.strip() for c in parts[0].split('||')])
-            right = parts[1].strip()
-            kb.append((left, right, level))
-            kb.append((tuple(right.split('||')), left, level))
-        elif '~' in part:
-            fact = part.strip('~').strip()
+            right_side = tuple(term.strip() for term in parts[1].split('<=')) 
+            left_side = parts[0].strip()
+            knowledge_base.append((right_side, left_side, level))
+    elif '<->' in expression:
+        if '&' in expression:
+            parts = expression.split('<->', 1)
+            left_side = tuple([term.strip() for term in parts[0].split('&')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side, level))
+            knowledge_base.append((tuple(right_side.split('&')), left_side, level))
+        elif '||' in expression:
+            parts = expression.split('<->', 1)
+            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side, level))
+            knowledge_base.append((tuple(right_side.split('||')), left_side, level))
+        elif '~' in expression:
+            fact = expression.strip('~').strip()
             if fact:
-                kb.append(fact, False, level)
+                knowledge_base.append((fact, False, level))
         else:
-            parts = part.split('<->', 1)
-            left = tuple([c.strip() for c in parts[0].split('<->')])
-            right = parts[1].strip()
-            kb.append((left, right, level))
-            kb.append((tuple(right.split('<->')), left, level))
+            parts = expression.split('<->', 1)
+            left_side = tuple([term.strip() for term in parts[0].split('<->')])
+            right_side = parts[1].strip()
+            knowledge_base.append((left_side, right_side, level))
+            knowledge_base.append((tuple(right_side.split('<->')), left_side, level))
     else:
-        facts.add(part)
-        facts.discard('')     
-    return kb, facts
+        facts_set.add(expression)
+        facts_set.discard('')
