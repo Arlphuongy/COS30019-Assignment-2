@@ -28,5 +28,5 @@ if __name__ == "__main__":
         print(result)
 
     else:
-        print("Invalid search method. Please choose among: TT, FC, BC")
+        print("Invalid search method")
         sys.exit(1)
