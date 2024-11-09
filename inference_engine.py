@@ -1,176 +1,201 @@
-import re
 import sys
-from itertools import product  # For generating all possible truth assignments
+from itertools import product
 from logic_operators import operator_table, operator_chain, generic_operator_table
 
-# Function to parse the input file and return the knowledge base (kb) and the query
-def parse_file(filename):
-    """Reads the input file and extracts the knowledge base and query."""
+# TRUTH TABLE PARSER
+def parse_truth_table_file(filename):
     with open(filename, 'r') as file:
-        lines = file.read().strip().splitlines()  # Read and split file by lines
-    
-    kb = []  # Knowledge base will be stored here
-    query = None  # This will store the query to be answered
-    tell_mode = False  # Flag to indicate if we are reading facts (TELL mode)
-    ask_mode = False  # Flag to indicate if we are reading a query (ASK mode)
-    
+        lines = file.read().split('\n')
+    knowledge_base = []
+    fact_set = set()  # Set of facts from the KB
+    query_statement = 0
+    parse_mode = 0
+    bracket_flag = 0  # 0 indicates no brackets in test case, 1 indicates brackets
     for line in lines:
-        line = line.strip()  # Clean up any leading or trailing whitespace
+        line = line.strip()
         if line == "TELL":
-            tell_mode = True  # Start reading facts (knowledge base)
-            ask_mode = False
+            parse_mode = 'TELL'
         elif line == "ASK":
-            ask_mode = True  # Start reading the query
-            tell_mode = False
-        elif tell_mode:
-            kb = line.split(';')  # Split the Horn clauses by ';'
-        elif ask_mode:
-            query = line.strip()  # Store the query when in ASK mode
-    
-    return kb, query
+            parse_mode = 'ASK'
+        elif parse_mode == 'TELL':
+            clauses = line.split(';')
+            for clause in clauses:
+                clause = clause.strip()
+                if any('(' in clause for clause in clauses):
+                    bracket_flag = 1
+                if bracket_flag == 0:
+                    operator_table(clause, knowledge_base, fact_set)
+                else:
+                    generic_operator_table(clause, knowledge_base, fact_set)
+        elif parse_mode == 'ASK' and line:
+            query_statement = line.strip()
+    return knowledge_base, fact_set, query_statement, bracket_flag
 
-# Function to check entailment using the Truth Table method (TT)
-def TT_entails(kb, query):
-    """Check if the knowledge base entails the query using a truth table."""
-    facts = set()  # Facts extracted from the knowledge base
-    processed_kb = []  # Processed knowledge base to handle logical operators
+# Constructing truth table for symbols in KB
+def generate_truth_combinations(symbols):
+    num_symbols = len(symbols)
+    truth_combinations = []
+    for truth_values in product([True, False], repeat=num_symbols):
+        truth_combinations.append(dict(zip(symbols, truth_values)))
+    return truth_combinations
 
-    # Process each clause in the knowledge base using a helper function
-    for clause in kb:
-        generic_operator_table(clause.strip(), processed_kb, facts)
+# Basic truth table evaluation without handling brackets
+def evaluate_truth_table(knowledge_base, fact_set, query_statement):
+    symbols = set()
+    for condition, _ in knowledge_base:
+        symbols.update(condition)
+    symbols.update(fact_set)
+    truth_combinations = generate_truth_combinations(symbols)
+    for row in truth_combinations:
+        for fact in fact_set:
+            row[fact] = True
+        for condition, result in knowledge_base:
+            if any('*' in c for c in condition):
+                condition = tuple(c.replace('*', '') for c in condition)
+                if any(row.get(c, False) for c in condition):
+                    row[result] = True
+                condition = tuple(c for c in condition if c.strip())
+            else:
+                if all(row[c] for c in condition):
+                    row[result] = True
+    evaluated_clause = condition + (query_statement,)
+    return f"> YES: {len(evaluated_clause)}" if query_statement in truth_combinations[-1] and truth_combinations[-1][query_statement] else "NO"
 
-    # Extract all unique propositional symbols from the knowledge base and query
-    symbols = extract_symbols(kb + [query])
+def evaluate_clause(row, condition):
+    if isinstance(condition, tuple):
+        return all(row.get(c, False) for c in condition)
+    return row.get(condition, False)
 
-    # Generate all possible truth assignments (models) for the symbols
-    models = list(product([False, True], repeat=len(symbols)))
-    num_models = 0  # Counter for how many models satisfy the query
+# Truth table evaluation for expressions with brackets
+def evaluate_generic_truth_table(knowledge_base, fact_set, query_statement):
+    symbols = set()
+    for condition, _, _ in knowledge_base:
+        symbols.update(condition)
+    symbols.update(fact_set)
+    truth_combinations = generate_truth_combinations(symbols)
 
-    # Check each model to see if it satisfies the knowledge base and the query
-    for model in models:
-        model_dict = {symbols[i]: model[i] for i in range(len(symbols))}
-        if all(evaluate_clause(clause, model_dict) for clause in processed_kb):
-            if evaluate_clause(query, model_dict):
-                num_models += 1  # If the model satisfies the query, increment the count
+    bracketed_clauses = {}
+    for clause in knowledge_base:
+        if clause[2] not in bracketed_clauses:
+            bracketed_clauses[clause[2]] = []
+        bracketed_clauses[clause[2]].append(clause)
 
-    return num_models > 0, num_models  # Return True if query is entailed, and the count of such models
+    for row in truth_combinations:
+        for fact in fact_set:
+            row[fact] = True
 
-# Function to extract all unique symbols (propositional variables) from the KB and query
-def extract_symbols(kb):
-    """Extract all unique propositional symbols from the knowledge base and query."""
-    symbols = set()  # Set to store symbols
-    for clause in kb:
-        # Remove logical operators to extract the symbols
-        clause = re.sub(r'[&|()~=><]', ' ', clause)
-        for symbol in clause.split():
-            if symbol and not symbol.isdigit():
-                symbols.add(symbol)  # Add the symbol to the set
-    return sorted(symbols)  # Return sorted list of unique symbols
+        for level in sorted(bracketed_clauses.keys()):
+            level_results = {}
+            for condition, result, _ in bracketed_clauses[level]:
+                if condition == ('@',):
+                    inner_conditions = []
+                    for prev_level in range(level - 1, -1, -1):
+                        for cond, res, _ in bracketed_clauses.get(prev_level, []):
+                            if cond == ('@',):
+                                inner_conditions.append(knowledge_base[0][0])
+                            else:
+                                inner_conditions.append(cond)
+                    for inner_condition in inner_conditions:
+                        if any('*' in c for c in condition):
+                            condition = tuple(c.replace('*', '') for c in condition)
+                            if any(row.get(c, False) for c in condition):
+                                row[result] = True
+                            condition = tuple(c for c in condition if c.strip())
+                        else:
+                            if evaluate_clause(row, inner_condition):
+                                level_results[result] = True
+                else:
+                    if any('*' in c for c in condition):
+                        condition = tuple(c.replace('*', '') for c in condition)
+                        if any(row.get(c, False) for c in condition):
+                            row[result] = True
+                        condition = tuple(c for c in condition if c.strip())
+                    else:
+                        if evaluate_clause(row, condition):
+                            level_results[result] = True
+                    inner_condition = ()
+            for result in level_results:
+                row[result] = True
+    evaluated_clause = len(condition) + len(bracketed_clauses) + len(query_statement) + len(inner_condition)
+    return f"> YES {evaluated_clause}" if evaluate_clause(truth_combinations[-1], query_statement) else "NO"
 
-# Function to evaluate a logical clause under a specific truth assignment (model)
-def evaluate_clause(clause, model):
-    """Evaluate a clause (logical expression) using a given truth model."""
-    # Replace each symbol in the clause with its corresponding value from the model
-    for symbol, value in model.items():
-        clause = clause.replace(symbol, str(value))
-    
-    # Handle implication by converting '=>' to 'or not' (standard logical equivalence)
-    clause = clause.replace('=>', ' or not ')  # Implication handling
-    return eval(clause)  # Evaluate the clause as a Python expression
+# Chain parser for forward and backward chaining
+def parse_chain_file(filename, method):
+    with open(filename, 'r') as file:
+        lines = file.read().split('\n')
+    knowledge_base = {}
+    fact_set = set()
+    query_statement = 0
+    parse_mode = 0
+    for line in lines:
+        line = line.strip()
+        if line == "TELL":
+            parse_mode = 'TELL'
+        elif line == "ASK":
+            parse_mode = 'ASK'
+        elif parse_mode == 'TELL':
+            clauses = line.split(';')
+            for clause in clauses:
+                clause = clause.strip()
+                operator_chain(clause, method, knowledge_base, fact_set)
+        elif parse_mode == 'ASK' and line:
+            query_statement = line.strip()
+    return knowledge_base, fact_set, query_statement
 
-# Forward Chaining Inference method
-def forward_chain(kb, query):
-    """Perform forward chaining to try to infer the query from the knowledge base."""
-    facts = set()  # Facts that are known to be true
-    kb_dict = {}  # Dictionary to store rules in KB (premise -> conclusion)
+# Forward chaining
+def forward_chaining(knowledge_base, fact_set, query_statement):
+    changed = True
+    while changed:
+        changed = False
+        for condition, result in knowledge_base.items():
+            if all(c in fact_set for c in condition):
+                if result not in fact_set:
+                    fact_set.add(result)
+                    changed = True
+    fact_set.discard('')
+    derived_facts_list = sorted(fact_set, key=lambda x: (len(x), x))
+    return f"> YES: " + ', '.join(derived_facts_list) if query_statement in fact_set else "NO"
 
-    # Process each clause in the knowledge base using operator_chain function
-    for clause in kb:
-        operator_chain(clause.strip(), "FC", kb_dict, facts)
-
-    agenda = list(facts)  # Initialize agenda with known facts
-    inferred = set()  # Set to track inferred facts
-
-    # Process each fact in the agenda
-    while agenda:
-        p = agenda.pop(0)  # Get the first fact from the agenda
-        if p == query:
-            return True, inferred.union({p})  # If we inferred the query, return True
-        if p not in inferred:
-            inferred.add(p)  # Mark the fact as inferred
-            # Check if any rule can be applied using this fact
-            for condition, conclusion in kb_dict.items():
-                if all(symbol in inferred for symbol in condition):
-                    agenda.append(conclusion)  # Add the conclusion to the agenda if the condition is satisfied
-    
-    return False, inferred  # Return False if query is not inferred
-
-# Backward Chaining Inference method
-def backward_chain(kb, query):
-    """Perform backward chaining to try to prove the query from the knowledge base."""
-    facts = set()  # Set of known facts
-    kb_dict = {}  # Dictionary to store rules (goal -> conditions)
-
-    # Process each clause in the knowledge base using operator_chain function
-    for clause in kb:
-        operator_chain(clause.strip(), "BC", kb_dict, facts)
-
-    # Start the backward chaining process
-    return BC_or(kb_dict, query, set())
-
-# Recursive function for OR in backward chaining (checking if goal can be proved)
-def BC_or(kb_dict, goal, inferred):
-    """Recursive OR for backward chaining (if the goal can be proved)."""
-    if goal in inferred:
-        return True  # If the goal is already inferred, return True
-    inferred.add(goal)  # Mark goal as inferred
-    if goal in kb_dict:
-        # Check if we can infer the goal by examining its premises
-        for premise in kb_dict[goal]:
-            if BC_and(kb_dict, premise, inferred):
-                return True  # If any premise leads to the goal, return True
-    return False  # Return False if goal can't be proved
-
-# Recursive function for AND in backward chaining (check all premises)
-def BC_and(kb_dict, premises, inferred):
-    """Recursive AND for backward chaining (check all premises of a rule)."""
-    for premise in premises:
-        if not BC_or(kb_dict, premise, inferred):
-            return False  # If any premise can't be proved, return False
-    return True  # All premises are proved, so return True
-
-# Main function to run the inference engine
-def iengine(filename, method):
-    """Main function to run the inference engine based on the selected method."""
-    kb, query = parse_file(filename)  # Parse the knowledge base and query from the input file
-
-    # Run the appropriate inference method based on the user's choice
-    if method == "TT":
-        entailed, num_models = TT_entails(kb, query)
-        if entailed:
-            print(f"YES: {num_models}")  # Query is entailed by the KB, print number of models
+# Backward chaining
+def backward_chaining(knowledge_base, fact_set, query_statement, derived_facts):
+    if query_statement in fact_set:
+        derived_facts.add(query_statement)
+        return True
+    if query_statement not in knowledge_base:
+        return False
+    for conditions in knowledge_base[query_statement]:
+        if all(backward_chaining(knowledge_base, fact_set, cond, derived_facts) for cond in conditions):
+            derived_facts.add(query_statement)
+            derived_facts_list = sorted(derived_facts, key=lambda x: (len(x), x))
+            return "> YES: " + ', '.join(derived_facts_list)
         else:
-            print("NO")  # Query is not entailed by the KB
-    elif method == "FC":
-        entailed, inferred = forward_chain(kb, query)
-        if entailed:
-            print(f"YES: {', '.join(inferred)}")  # Print all inferred facts that lead to the query
-        else:
-            print("NO")  # Query can't be inferred from the KB
-    elif method == "BC":
-        entailed = backward_chain(kb, query)
-        if entailed:
-            print(f"YES: {query}")  # Query can be proved using backward chaining
-        else:
-            print("NO")  # Query can't be proved using backward chaining
-    else:
-        print("Invalid method! Use TT, FC, or BC.")  # Handle invalid method input
+            return "NO"
+    return False
 
-# Entry point of the program
+# Main execution
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python iengine.py <filename> <method>")
+    filename = sys.argv[1]
+    method = sys.argv[2]
+
+    if method == "TT":
+        knowledge_base, fact_set, query_statement, bracket_flag = parse_truth_table_file(filename)
+        if bracket_flag == 0:
+            result = evaluate_truth_table(knowledge_base, fact_set, query_statement)
+        elif bracket_flag == 1:
+            result = evaluate_generic_truth_table(knowledge_base, fact_set, query_statement)
+        print(result)
+
+    elif method == "FC":
+        knowledge_base, fact_set, query_statement = parse_chain_file(filename, method)
+        result = forward_chaining(knowledge_base, fact_set, query_statement)
+        print(result)
+
+    elif method == "BC":
+        knowledge_base, fact_set, query_statement = parse_chain_file(filename, method)
+        derived_facts = set()
+        result = backward_chaining(knowledge_base, fact_set, query_statement, derived_facts)
+        print(result)
+
     else:
-        filename = sys.argv[1]  # Get the input filename from the command line arguments
-        method = sys.argv[2]  # Get the inference method from the command line arguments
-        iengine(filename, method)  # Run the inference engine with the specified method
+        print("Invalid search method. Please choose among: TT, FC, BC")
+        sys.exit(1)
