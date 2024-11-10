@@ -2,23 +2,30 @@ from logic_operators import operator_chain
 
 # Chain parser for forward and backward chaining
 def parse_chain_file(filename, method):
-    with open(filename, 'r') as file:
-        lines = file.read().split('\n')
     knowledge_base = {}
     fact_set = set()
     query_statement = 0
     parse_mode = 0
+    with open(filename, 'r') as file:
+        lines = file.read().splitlines()
+
     for line in lines:
         line = line.strip()
+        if not line:
+            continue
+
         if line == "TELL":
             parse_mode = 'TELL'
+
         elif line == "ASK":
             parse_mode = 'ASK'
+
         elif parse_mode == 'TELL':
             clauses = line.split(';')
             for clause in clauses:
                 clause = clause.strip()
                 operator_chain(clause, method, knowledge_base, fact_set)
+
         elif parse_mode == 'ASK' and line:
             query_statement = line.strip()
     return knowledge_base, fact_set, query_statement
