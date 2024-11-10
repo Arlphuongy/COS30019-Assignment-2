@@ -1,195 +1,173 @@
 import re
-from itertools import product
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Tuple
 
-# Mapping of universal logical operators to internal symbols
-operator_mapping = {
-    '^': '&', '∧': '&',
-    '|': '||',
-    '¬': '~', '!': '~',
-    '->': '=>', '→': '=>',
-    '<-': '<=', '←': '<=',
-    '<=>': '<->', '↔': '<->',
-}
+class LogicalOperator(Enum):
+    #enumeration of logical operators
+    AND = auto()
+    OR = auto()
+    NOT = auto()
+    IMPLIES = auto()
+    IMPLIED_BY = auto()
+    EQUIVALENCE = auto()
+
+@dataclass
+class ParsedExpression:
+    #dataclass to hold parsed logical expression components
+    left_side: Tuple[str, ...]
+    right_side: str
+    operator_type: LogicalOperator
+    level: int = 0
+
+class LogicParser:
+    #parser for logical expressions with stadardized operator handinling
+    OPERATOR_MAPPING = {
+        '^': '&', '∧': '&',              # AND operators
+        '|': '||',                       # OR operator
+        '¬': '~', '!': '~',              # NOT operators
+        '->': '=>', '→': '=>',           # IMPLIES operators
+        '<-': '<=', '←': '<=',           # IMPLIED BY operators
+        '<=>': '<->', '↔': '<->',        # EQUIVALENCE operators
+    }
+
+    #internal symbols to operator type mapping
+    SYMBOL_TO_TYPE = {
+        '&': LogicalOperator.AND,
+        '||': LogicalOperator.OR,
+        '~': LogicalOperator.NOT,
+        '=>': LogicalOperator.IMPLIES,
+        '<=': LogicalOperator.IMPLIED_BY,
+        '<->': LogicalOperator.EQUIVALENCE
+    }
+
+    @classmethod
+    def standardize_expression(cls, expression):
+        #convert universal operators into internal symbols
+        result = expression.strip()
+        for universal, internal in cls.OPERATOR_MAPPING.items():
+            result = result.replace(universal, internal)
+        return result
+
+    @classmethod
+    def parse_expression(cls, expression, level: int = 0):
+        #parse a logical expression into its components
+        expression = cls.standardize_expression(expression)
+        
+        #handle simple facts
+        if not any(symbol in expression for symbol in cls.SYMBOL_TO_TYPE.keys()):
+            return expression
+
+        #handle implications
+        for symbol, op_type in cls.SYMBOL_TO_TYPE.items():
+            if symbol in expression:
+                parts = expression.split(symbol, 1)
+                
+                if op_type in {LogicalOperator.IMPLIES, LogicalOperator.IMPLIED_BY, LogicalOperator.EQUIVALENCE}:
+                    left, right = parts if op_type != LogicalOperator.IMPLIED_BY else (parts[1], parts[0])
+                    
+                    #handle AND conditions
+                    if '&' in left:
+                        conditions = tuple(term.strip() for term in left.split('&'))
+                        return ParsedExpression(conditions, right.strip(), op_type, level)
+                    
+                    #handle OR conditions
+                    elif '||' in left:
+                        conditions = tuple(f"*{term.strip()}" if term.strip() else term.strip() 
+                                        for term in left.split('||'))
+                        return ParsedExpression(conditions, right.strip(), op_type, level)
+                    
+                    #handle NOT conditions
+                    elif '~' in left:
+                        fact = left.strip('~').strip()
+                        return ParsedExpression((fact,), "False", LogicalOperator.NOT, level)
+                    
+                    #handle simple implications
+                    else:
+                        return ParsedExpression((left.strip(),), right.strip(), op_type, level)
+
+        return expression
 
 def operator_table(expression, knowledge_base, facts_set):
-    # Replacing universal operators with internal symbols
-    for variable, symbol in operator_mapping.items():
-        expression = expression.replace(variable, symbol)
-    
-    if '=>' in expression:
-        parts = expression.split('=>')
-        if '&' in parts[0]:
-            left_side = tuple([term.strip() for term in parts[0].split('&')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side))
-        elif '||' in parts[0]:
-            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side))
-        elif '~' in parts[0]:
-            fact = parts[0].strip('~').strip()
-            if fact:
-                knowledge_base.append((fact, False))
+
+    try:
+        parsed = LogicParser.parse_expression(expression)
+        
+        if isinstance(parsed, str):
+            facts_set.add(parsed)
+            facts_set.discard('')
+            return expression, facts_set
+        
+        if parsed.operator_type == LogicalOperator.EQUIVALENCE:
+            #handle bi-directional implications
+            knowledge_base.append((parsed.left_side, parsed.right_side))
+            reverse_sides = tuple(parsed.right_side.split('&'))
+            knowledge_base.append((reverse_sides, ' & '.join(parsed.left_side)))
         else:
-            left_side = tuple(term.strip() for term in parts[0].split('=>'))
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side))
-    elif '<=' in expression:
-        parts = expression.split('<=')
-        if '&' in parts[1]:
-            right_side = tuple([term.strip() for term in parts[1].split('&')])
-            left_side = parts[0].strip()
-            knowledge_base.append((right_side, left_side))
-        elif '||' in parts[1]:
-            right_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[1].split('||')])
-            left_side = parts[0].strip()
-            knowledge_base.append((right_side, left_side))
-        elif '~' in parts[1]:
-            fact = parts[0].strip('~').strip()
-            if fact:
-                knowledge_base.append((fact, False))
-        else:
-            right_side = tuple(term.strip() for term in parts[1].split('<=')) 
-            left_side = parts[0].strip()
-            knowledge_base.append((right_side, left_side))
-    elif '<->' in expression:
-        if '&' in expression:
-            parts = expression.split('<->')
-            left_side = tuple([term.strip() for term in parts[0].split('&')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side))
-            knowledge_base.append((tuple(right_side.split('&')), left_side))
-        elif '||' in expression:
-            parts = expression.split('<->')
-            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side))
-            knowledge_base.append((tuple(right_side.split('||')), left_side))
-        elif '~' in expression:
-            fact = expression.strip('~').strip()
-            if fact:
-                knowledge_base.append((fact, False))
-        else:
-            parts = expression.split('<->')
-            left_side = tuple([term.strip() for term in parts[0].split('<->')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side))
-            knowledge_base.append((tuple(right_side.split('<->')), left_side))
-    else:
-        facts_set.add(expression)
-        facts_set.discard('')
-    
-    return expression, facts_set 
+            knowledge_base.append((parsed.left_side, parsed.right_side))
+        
+        return expression, facts_set
+    except Exception as e:
+        print(f"Error processing expression: {expression}")
+        print(f"Error details: {str(e)}")
+        return expression, facts_set
 
 def operator_chain(expression, method, knowledge_base, facts_set):
-    for variable, symbol in operator_mapping.items():
-        expression = expression.replace(variable, symbol)
-    
-    if '(' in expression or '||' in expression or '~' in expression:
-        print("Generic KB is not applicable to FC and BC method.")
-        return
-    if '=>' in expression:
-        left_side, right_side = expression.split('=>')
-        left_parts = left_side.split('&')
-        condition = tuple(term.strip() for term in left_parts)
-        if method == "FC":
-            knowledge_base[condition] = right_side.strip()
-        elif method == "BC":
-            knowledge_base.setdefault(right_side.strip(), []).append(condition)
-    elif '<=' in expression:
-        right_side, left_side = expression.split('<=')
-        right_parts = right_side.split('&')
-        condition = tuple(term.strip() for term in right_parts)
-        if method == "FC":
-            knowledge_base[condition] = left_side.strip()
-        elif method == "BC":
-            knowledge_base.setdefault(left_side.strip(), []).append(condition)
-    elif '<->' in expression:
-        left_side, right_side = expression.split('<->')
-        left_parts = left_side.split('&')
-        condition_left = tuple(term.strip() for term in left_parts)
-        right_parts = right_side.split('&')
-        condition_right = tuple(term.strip() for term in right_parts)
-        if method == "FC":
-            knowledge_base[condition_left] = right_side.strip()
-            knowledge_base[condition_right] = left_side.strip()
-        elif method == "BC":
-            knowledge_base.setdefault(right_side.strip(), []).append(condition_left)
-            knowledge_base.setdefault(left_side.strip(), []).append(condition_right)
-    else:
-        facts_set.add(expression)
-    return knowledge_base, facts_set
 
-def generic_operator_table(expression, knowledge_base, facts_set, level=0):
-    for variable, symbol in operator_mapping.items():
-        expression = expression.replace(variable, symbol)
-    
-    if '(' in expression:
-        level += 1
-        while '(' in expression:
-            inner_expressions = re.findall(r'\(([^()]+)\)', expression)
-            for inner_expression in inner_expressions:
-                generic_operator_table(inner_expression, knowledge_base, facts_set, level)
-            expression = re.sub(r'\(([^()]+)\)', '@', expression)
+    try:
+        #early validation
+        if any(char in expression for char in '()||~'):
+            print("Generic KB is not applicable to FC and BC method.")
+            return knowledge_base, facts_set
+
+        parsed = LogicParser.parse_expression(expression)
         
-        parts = expression.split('=>', 1)
-        if '&' in parts[0]:
-            left_side = tuple([term.strip() for term in parts[0].split('&')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side, level))
-        elif '||' in parts[0]:
-            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side, level)) 
-        elif '~' in parts[0]:
-            fact = parts[0].strip('~').strip()
-            if fact:
-                knowledge_base.append((fact, False, level))
+        if isinstance(parsed, str):
+            facts_set.add(parsed)
+            return knowledge_base, facts_set
+
+        if method == "FC":
+            knowledge_base[parsed.left_side] = parsed.right_side
+            if parsed.operator_type == LogicalOperator.EQUIVALENCE:
+                reverse_sides = tuple(parsed.right_side.split('&'))
+                knowledge_base[reverse_sides] = ' & '.join(parsed.left_side)
+        elif method == "BC":
+            knowledge_base.setdefault(parsed.right_side, []).append(parsed.left_side)
+            if parsed.operator_type == LogicalOperator.EQUIVALENCE:
+                reverse_sides = tuple(parsed.right_side.split('&'))
+                knowledge_base.setdefault(' & '.join(parsed.left_side), []).append(reverse_sides)
+
+        return knowledge_base, facts_set
+    except Exception as e:
+        print(f"Error processing expression: {expression}")
+        print(f"Error details: {str(e)}")
+        return knowledge_base, facts_set
+
+def generic_operator_table(expression, knowledge_base, facts_set, level: int = 0):
+
+    try:
+        if '(' in expression:
+            level += 1
+            while '(' in expression:
+                inner_expressions = re.findall(r'\(([^()]+)\)', expression)
+                for inner_expr in inner_expressions:
+                    generic_operator_table(inner_expr, knowledge_base, facts_set, level)
+                expression = re.sub(r'\(([^()]+)\)', '@', expression)
+
+        parsed = LogicParser.parse_expression(expression, level)
+        
+        if isinstance(parsed, str):
+            facts_set.add(parsed)
+            facts_set.discard('')
+            return
+
+        if parsed.operator_type == LogicalOperator.EQUIVALENCE:
+            knowledge_base.append((parsed.left_side, parsed.right_side, level))
+            reverse_sides = tuple(parsed.right_side.split('&'))
+            knowledge_base.append((reverse_sides, ' & '.join(parsed.left_side), level))
         else:
-            left_side = tuple(term.strip() for term in parts[0].split('=>'))
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side, level))
-    elif '<=' in expression:
-        parts = expression.split('<=', 1)
-        if '&' in parts[1]:
-            right_side = tuple([term.strip() for term in parts[1].split('&')])
-            left_side = parts[0].strip()
-            knowledge_base.append((right_side, left_side, level))
-        elif '||' in parts[1]:
-            right_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[1].split('||')])
-            left_side = parts[0].strip()
-            knowledge_base.append((right_side, left_side, level))
-        elif '~' in parts[1]:
-            fact = parts[0].strip('~').strip()
-            if fact:
-                knowledge_base.append((fact, False, level))
-        else:
-            right_side = tuple(term.strip() for term in parts[1].split('<=')) 
-            left_side = parts[0].strip()
-            knowledge_base.append((right_side, left_side, level))
-    elif '<->' in expression:
-        if '&' in expression:
-            parts = expression.split('<->', 1)
-            left_side = tuple([term.strip() for term in parts[0].split('&')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side, level))
-            knowledge_base.append((tuple(right_side.split('&')), left_side, level))
-        elif '||' in expression:
-            parts = expression.split('<->', 1)
-            left_side = tuple(['*' + term.strip() if term.strip() else term.strip() for term in parts[0].split('||')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side, level))
-            knowledge_base.append((tuple(right_side.split('||')), left_side, level))
-        elif '~' in expression:
-            fact = expression.strip('~').strip()
-            if fact:
-                knowledge_base.append((fact, False, level))
-        else:
-            parts = expression.split('<->', 1)
-            left_side = tuple([term.strip() for term in parts[0].split('<->')])
-            right_side = parts[1].strip()
-            knowledge_base.append((left_side, right_side, level))
-            knowledge_base.append((tuple(right_side.split('<->')), left_side, level))
-    else:
-        facts_set.add(expression)
-        facts_set.discard('')
+            knowledge_base.append((parsed.left_side, parsed.right_side, level))
+            
+    except Exception as e:
+        print(f"Error processing expression: {expression}")
+        print(f"Error details: {str(e)}")
