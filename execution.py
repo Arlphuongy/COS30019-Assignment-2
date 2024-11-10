@@ -59,7 +59,7 @@ def parse_arguments():
                         help='Inference method to use')
     return parser.parse_args()
 
-def main() -> None:
+def main():
     args = parse_arguments()
     
     if not args.filename.exists():
