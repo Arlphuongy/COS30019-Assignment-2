@@ -1,6 +1,5 @@
 from logic_operators import operator_chain
 
-
 def parse_chain_file(filename, method):
     with open(filename, 'r') as file:
         lines = file.read().split('\n')
