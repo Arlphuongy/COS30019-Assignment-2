@@ -8,11 +8,13 @@ import argparse
 from truth_table import parse_truth_table_file, evaluate_truth_table, evaluate_generic_truth_table
 from forward_chaining import parse_chain_file, forward_chaining
 from backward_chaining import backward_chaining
+from dpll import process_dpll_file
 
 class InferenceMethod(Enum):
     TRUTH_TABLE = "TT"
     FORWARD_CHAINING = "FC"
     BACKWARD_CHAINING = "BC"
+    DPLL = "DPLL"
 
 @dataclass
 class InferenceResult:
@@ -51,6 +53,13 @@ class InferenceEngine:
             
         except Exception as e:
             return InferenceResult(is_valid=False, error_message=str(e))
+    
+    def process_dpll(self, filename):
+        try:
+            result = process_dpll_file(filename)
+            return InferenceResult(is_valid=result)
+        except Exception as e:
+            return InferenceResult(is_valid=False, error_message=str(e))
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Inference Engine')
@@ -75,6 +84,8 @@ def main():
             result = engine.process_forward_chaining(args.filename)
         elif args.method == InferenceMethod.BACKWARD_CHAINING.value:
             result = engine.process_backward_chaining(args.filename)
+        elif args.method == InferenceMethod.DPLL.value:
+            result = engine.process_dpll(args.filename)
         
         if result.error_message:
             print(f"Error: {result.error_message}")
