@@ -1,4 +1,4 @@
-from logic_operators import LogicParser, LogicalOperator
+from logic_operators import LogicParser, LogicalOperator, ParsedExpression
 
 class Literal:
     def __init__(self, name, negated = False):
@@ -38,7 +38,7 @@ class Clause:
 class KnowledgeBase:
     def __init__(self):
         self.clauses = []
-        self.symbols = set()
+        self.symbols= set()
     
     def add_clause(self, clause: Clause):
         self.clauses.append(clause)
@@ -133,7 +133,7 @@ def find_unit_clause(kb, assignment):
     
     return None
 
-def dpll_satisfiable(kb, assignment):
+def dpll_satisfiable(kb, assignment = None):
     if assignment is None:
         assignment = {}
     
