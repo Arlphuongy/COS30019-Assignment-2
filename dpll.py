@@ -1,4 +1,4 @@
-from logic_operators import LogicParser, LogicalOperator, ParsedExpression
+from logic_operators import LogicParser, LogicalOperator
 
 class Literal:
     def __init__(self, name, negated = False):
