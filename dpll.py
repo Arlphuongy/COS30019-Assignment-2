@@ -107,3 +107,129 @@ def parse_knowledge_base(filename): #parses a file to construct a knowledge base
             kb.add_clause(Clause(literals))
 
     return kb, ask_query
+
+def find_pure_literal(kb, assignment):
+    """
+    Finds a pure literal (a literal that appears with only one polarity) in the knowledge base.
+    Args:
+        kb (KnowledgeBase): The knowledge base to search.
+        assignment (dict): Current variable assignments.
+    Returns:
+        tuple or None: (variable, truth value) if found, otherwise None.
+    """
+    polarity = {}
+    for clause in kb.clauses:
+        for lit in clause.literals:
+            if lit.name not in assignment:
+                if lit.name not in polarity:
+                    polarity[lit.name] = set()
+                polarity[lit.name].add(lit.negated)
+
+    for var, pols in polarity.items():
+        if len(pols) == 1:  # Only one polarity exists
+            return var, not list(pols)[0]
+    return None
+
+def find_unit_clause(kb, assignment):
+    """
+    Finds a unit clause (a clause with exactly one unassigned literal).
+    Args:
+        kb (KnowledgeBase): The knowledge base to search.
+        assignment (dict): Current variable assignments.
+    Returns:
+        tuple or None: (variable, truth value) if found, otherwise None.
+    """
+    for clause in kb.clauses:
+        unassigned = []
+        is_satisfied = False
+
+        for lit in clause.literals:
+            if lit.name in assignment:
+                if (not lit.negated and assignment[lit.name]) or (lit.negated and not assignment[lit.name]):
+                    is_satisfied = True
+                    break
+            else:
+                unassigned.append(lit)
+
+        if not is_satisfied and len(unassigned) == 1:
+            return unassigned[0].name, not unassigned[0].negated
+
+    return None
+
+def dpll_satisfiable(kb, assignment=None):
+    """
+    Uses the DPLL algorithm to check satisfiability of the knowledge base.
+    Args:
+        kb (KnowledgeBase): The knowledge base to evaluate.
+        assignment (dict): Current variable assignments (default is None).
+    Returns:
+        dict or None: Satisfying assignment if found, otherwise None.
+    """
+    if assignment is None:
+        assignment = {}
+
+    all_satisfied = True
+    for clause in kb.clauses:
+        result = clause.evaluate(assignment)
+        if result is False:
+            return None  # Clause is unsatisfied
+        if result is None:
+            all_satisfied = False  # Some clauses are undecided
+
+    if all_satisfied:
+        return assignment  # All clauses are satisfied
+
+    # Apply unit propagation
+    unit = find_unit_clause(kb, assignment)
+    if unit:
+        var, value = unit
+        new_assignment = assignment.copy()
+        new_assignment[var] = value
+        return dpll_satisfiable(kb, new_assignment)
+
+    # Apply pure literal elimination
+    pure = find_pure_literal(kb, assignment)
+    if pure:
+        var, value = pure
+        new_assignment = assignment.copy()
+        new_assignment[var] = value
+        return dpll_satisfiable(kb, new_assignment)
+
+    # Choose a variable and try both true and false assignments
+    var = next(iter(kb.symbols - set(assignment.keys())))
+
+    assignment_true = assignment.copy()
+    assignment_true[var] = True
+    result = dpll_satisfiable(kb, assignment_true)
+    if result is not None:
+        return result
+
+    assignment_false = assignment.copy()
+    assignment_false[var] = False
+    return dpll_satisfiable(kb, assignment_false)
+
+def process_dpll_file(filename: str) -> bool:
+    """
+    Processes a file using the DPLL algorithm to check satisfiability.
+    Args:
+        filename (str): Path to the input file.
+    Returns:
+        bool: True if unsatisfiable, False otherwise.
+    """
+    try:
+        kb, query = parse_knowledge_base(filename)
+
+        query_kb = KnowledgeBase()
+        query_kb.clauses = kb.clauses.copy()
+        query_kb.symbols = kb.symbols.copy()
+
+        # Negate the query and add it to the knowledge base
+        if query.startswith('~'):
+            query_kb.add_clause(Clause([Literal(query[1:])]))
+        else:
+            query_kb.add_clause(Clause([Literal(query, True)]))
+
+        return dpll_satisfiable(query_kb) is None
+
+    except Exception as e:
+        raise Exception(f"Error processing DPLL file: {str(e)}")
