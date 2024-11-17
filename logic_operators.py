@@ -1,4 +1,4 @@
-import re
+import re 
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Tuple
@@ -88,49 +88,56 @@ class LogicParser:
 
         return expression
 
+#function to process logical operator table
 def operator_table(expression, knowledge_base, facts_set):
 
-    try:
+    try: #parses the logical expression
         parsed = LogicParser.parse_expression(expression)
         
+        #if parsed result is simple string (fact), add it to the facts set
         if isinstance(parsed, str):
             facts_set.add(parsed)
-            facts_set.discard('')
+            facts_set.discard('') #remove empty strings
             return expression, facts_set
         
         if parsed.operator_type == LogicalOperator.EQUIVALENCE:
             #handle bi-directional implications
-            knowledge_base.append((parsed.left_side, parsed.right_side))
-            reverse_sides = tuple(parsed.right_side.split('&'))
-            knowledge_base.append((reverse_sides, ' & '.join(parsed.left_side)))
+            knowledge_base.append((parsed.left_side, parsed.right_side)) #add forward implication to knowledge base
+            reverse_sides = tuple(parsed.right_side.split('&')) #add the reverse implication to the knowledge base
+            knowledge_base.append((reverse_sides, ' & '.join(parsed.left_side))) 
         else:
-            knowledge_base.append((parsed.left_side, parsed.right_side))
+            knowledge_base.append((parsed.left_side, parsed.right_side)) #add a simple implication to the knowledge base
         
         return expression, facts_set
-    except Exception as e:
+    except Exception as e: #handle errors during processing and log the details
         print(f"Error processing expression: {expression}")
         print(f"Error details: {str(e)}")
         return expression, facts_set
 
+#function to process a chain of logical operators 
 def operator_chain(expression, method, knowledge_base, facts_set):
-
     try:
         #early validation
         if any(char in expression for char in '()||~'):
             print("Generic KB is not applicable to FC and BC method.")
             return knowledge_base, facts_set
 
+        #parse the logical expression 
         parsed = LogicParser.parse_expression(expression)
         
+        #handle simple facts
         if isinstance(parsed, str):
             facts_set.add(parsed)
             return knowledge_base, facts_set
 
+        #handle forward chaining 
         if method == "FC":
             knowledge_base[parsed.left_side] = parsed.right_side
+            #add reverse implications for equivalence
             if parsed.operator_type == LogicalOperator.EQUIVALENCE:
                 reverse_sides = tuple(parsed.right_side.split('&'))
                 knowledge_base[reverse_sides] = ' & '.join(parsed.left_side)
+        #handle backward chaining
         elif method == "BC":
             knowledge_base.setdefault(parsed.right_side, []).append(parsed.left_side)
             if parsed.operator_type == LogicalOperator.EQUIVALENCE:
@@ -139,35 +146,49 @@ def operator_chain(expression, method, knowledge_base, facts_set):
 
         return knowledge_base, facts_set
     except Exception as e:
+        #handle errors during processing and log the details
         print(f"Error processing expression: {expression}")
         print(f"Error details: {str(e)}")
         return knowledge_base, facts_set
 
+#function to handle generic operator table
 def generic_operator_table(expression, knowledge_base, facts_set, level: int = 0):
 
     try:
+        #increase the nesting level if the parentheses are detected
         if '(' in expression:
             level += 1
+            #while there are parentheses in the expression
             while '(' in expression:
+                #find all innermost parenthitical expressions
                 inner_expressions = re.findall(r'\(([^()]+)\)', expression)
                 for inner_expr in inner_expressions:
+                    #recursively process each inner expression
                     generic_operator_table(inner_expr, knowledge_base, facts_set, level)
+                #replace processed inner expressions with placeholds (@)
                 expression = re.sub(r'\(([^()]+)\)', '@', expression)
 
+        #parse the simplified expression
         parsed = LogicParser.parse_expression(expression, level)
         
+        #handle simple facts
         if isinstance(parsed, str):
             facts_set.add(parsed)
-            facts_set.discard('')
+            facts_set.discard('') #remove empty strings 
             return
 
+        #handle equivalence (bi-directional implications)
         if parsed.operator_type == LogicalOperator.EQUIVALENCE:
+            #add forward implication to the knowledge base 
             knowledge_base.append((parsed.left_side, parsed.right_side, level))
+            #add reverse implication to the knowledge base 
             reverse_sides = tuple(parsed.right_side.split('&'))
             knowledge_base.append((reverse_sides, ' & '.join(parsed.left_side), level))
         else:
+            #add simple implication to the knowledge base
             knowledge_base.append((parsed.left_side, parsed.right_side, level))
             
     except Exception as e:
+        #handle errors during processing and log the details
         print(f"Error processing expression: {expression}")
         print(f"Error details: {str(e)}")
