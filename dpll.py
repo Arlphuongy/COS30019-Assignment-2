@@ -1,4 +1,4 @@
-from logic_operators import LogicParser, LogicalOperator  # Import logical parsing utilities and operator enumeration
+from logic_operators import LogicParser, LogicalOperator  #import logical parsing utilities and operator enumeration
 
 #represents a literal (atomic statement) in logical expressions
 class Literal: #initialize a literal with a name and negation status
@@ -30,7 +30,7 @@ class Clause:
 
     def evaluate(self, assignment): #evalautes the clause based on given asssignment
         if not all(lit.name in assignment for lit in self.literals):
-            return None  # Undecided if some literals are unassigned
+            return None  #undecided if some literals are unassigned
         return any(
             (not lit.negated and assignment[lit.name]) or
             (lit.negated and not assignment[lit.name])
@@ -40,8 +40,8 @@ class Clause:
 #represents a knowledge base composed of multiple clauses
 class KnowledgeBase: #initialize an empty knowledge base with clauses and symbols
     def __init__(self):
-        self.clauses = []  # List of clauses
-        self.symbols = set()  # Set of unique symbols in the clauses
+        self.clauses = []  #list of clauses
+        self.symbols = set()  #set of unique symbols in the clauses
 
     def add_clause(self, clause: Clause): #adds a clause to the knowledge base and updates the symbol set
         self.clauses.append(clause)
@@ -69,19 +69,19 @@ def parse_knowledge_base(filename): #parses a file to construct a knowledge base
         elif parse_mode == 'ASK' and line:
             ask_query = line.strip()
 
-    # Parse rules from the TELL section into the knowledge base
+    #parse rules from the tell section into the knowledge base
     for expr in tell_content:
         parsed = LogicParser.parse_expression(expr)
 
         if isinstance(parsed, str):
             if parsed.startswith('~'):
-                kb.add_clause(Clause([Literal(parsed[1:], True)]))  # Add negated literal
+                kb.add_clause(Clause([Literal(parsed[1:], True)]))  #add negated literal
             else:
-                kb.add_clause(Clause([Literal(parsed)]))  # Add positive literal
+                kb.add_clause(Clause([Literal(parsed)]))  #add positive literal
             continue
 
         if parsed.operator_type == LogicalOperator.IMPLIES:
-            # Add implication as a clause
+            #add implication as a clause
             if len(parsed.left_side) == 1:
                 kb.add_clause(Clause([Literal(parsed.left_side[0], True), Literal(parsed.right_side)]))
             else:
@@ -90,12 +90,12 @@ def parse_knowledge_base(filename): #parses a file to construct a knowledge base
                 kb.add_clause(Clause(literals))
 
         elif parsed.operator_type == LogicalOperator.EQUIVALENCE:
-            # Add equivalence as two implications
+            #add equivalence as two implications
             kb.add_clause(Clause([Literal(parsed.left_side[0], True), Literal(parsed.right_side)]))
             kb.add_clause(Clause([Literal(parsed.right_side, True), Literal(parsed.left_side[0])]))
 
         elif parsed.operator_type == LogicalOperator.OR:
-            # Add disjunction of literals
+            #add disjunction of literals
             literals = []
             for term in parsed.left_side:
                 if term.startswith('*'):
@@ -108,15 +108,7 @@ def parse_knowledge_base(filename): #parses a file to construct a knowledge base
 
     return kb, ask_query
 
-def find_pure_literal(kb, assignment):
-    """
-    Finds a pure literal (a literal that appears with only one polarity) in the knowledge base.
-    Args:
-        kb (KnowledgeBase): The knowledge base to search.
-        assignment (dict): Current variable assignments.
-    Returns:
-        tuple or None: (variable, truth value) if found, otherwise None.
-    """
+def find_pure_literal(kb, assignment): #find a pure literal in the knowledge base
     polarity = {}
     for clause in kb.clauses:
         for lit in clause.literals:
@@ -126,19 +118,11 @@ def find_pure_literal(kb, assignment):
                 polarity[lit.name].add(lit.negated)
 
     for var, pols in polarity.items():
-        if len(pols) == 1:  # Only one polarity exists
+        if len(pols) == 1:  #only one polarity exists
             return var, not list(pols)[0]
     return None
 
-def find_unit_clause(kb, assignment):
-    """
-    Finds a unit clause (a clause with exactly one unassigned literal).
-    Args:
-        kb (KnowledgeBase): The knowledge base to search.
-        assignment (dict): Current variable assignments.
-    Returns:
-        tuple or None: (variable, truth value) if found, otherwise None.
-    """
+def find_unit_clause(kb, assignment): #finds a unit clause 
     for clause in kb.clauses:
         unassigned = []
         is_satisfied = False
@@ -156,15 +140,7 @@ def find_unit_clause(kb, assignment):
 
     return None
 
-def dpll_satisfiable(kb, assignment=None):
-    """
-    Uses the DPLL algorithm to check satisfiability of the knowledge base.
-    Args:
-        kb (KnowledgeBase): The knowledge base to evaluate.
-        assignment (dict): Current variable assignments (default is None).
-    Returns:
-        dict or None: Satisfying assignment if found, otherwise None.
-    """
+def dpll_satisfiable(kb, assignment=None): #uses the dpll algorithm to check satisfiability of the knowledge base
     if assignment is None:
         assignment = {}
 
@@ -172,14 +148,14 @@ def dpll_satisfiable(kb, assignment=None):
     for clause in kb.clauses:
         result = clause.evaluate(assignment)
         if result is False:
-            return None  # Clause is unsatisfied
+            return None  #clause is unsatisfied
         if result is None:
-            all_satisfied = False  # Some clauses are undecided
+            all_satisfied = False  #some clauses are undecided
 
     if all_satisfied:
-        return assignment  # All clauses are satisfied
+        return assignment  #all clauses are satisfied
 
-    # Apply unit propagation
+    #apply unit propagation
     unit = find_unit_clause(kb, assignment)
     if unit:
         var, value = unit
@@ -187,7 +163,7 @@ def dpll_satisfiable(kb, assignment=None):
         new_assignment[var] = value
         return dpll_satisfiable(kb, new_assignment)
 
-    # Apply pure literal elimination
+    #apply pure literal elimination
     pure = find_pure_literal(kb, assignment)
     if pure:
         var, value = pure
@@ -195,7 +171,7 @@ def dpll_satisfiable(kb, assignment=None):
         new_assignment[var] = value
         return dpll_satisfiable(kb, new_assignment)
 
-    # Choose a variable and try both true and false assignments
+    #choose a variable and try both true and false assignments
     var = next(iter(kb.symbols - set(assignment.keys())))
 
     assignment_true = assignment.copy()
@@ -208,14 +184,7 @@ def dpll_satisfiable(kb, assignment=None):
     assignment_false[var] = False
     return dpll_satisfiable(kb, assignment_false)
 
-def process_dpll_file(filename: str) -> bool:
-    """
-    Processes a file using the DPLL algorithm to check satisfiability.
-    Args:
-        filename (str): Path to the input file.
-    Returns:
-        bool: True if unsatisfiable, False otherwise.
-    """
+def process_dpll_file(filename): #processes file using the dpll algorithm to check satisfiability
     try:
         kb, query = parse_knowledge_base(filename)
 
@@ -223,7 +192,7 @@ def process_dpll_file(filename: str) -> bool:
         query_kb.clauses = kb.clauses.copy()
         query_kb.symbols = kb.symbols.copy()
 
-        # Negate the query and add it to the knowledge base
+        #negate the query and add it to the knowledge base
         if query.startswith('~'):
             query_kb.add_clause(Clause([Literal(query[1:])]))
         else:
