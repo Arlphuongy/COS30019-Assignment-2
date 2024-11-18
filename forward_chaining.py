@@ -41,23 +41,18 @@ def parse_chain_file(filename, method):
 
 #forward chaining
 def forward_chaining(knowledge_base, fact_set, query_statement):
-    changed = True  #flag to track if new facts are being derived
+    changed = True  # Flag to track if new facts are being derived
     while changed:
-        changed = False  #reset the flag
-        #iterate through the knowledge base rules
+        changed = False
         for condition, result in knowledge_base.items():
-            #check if all conditions for the rule are satisfied by the current facts
             if all(c in fact_set for c in condition):
-                #add the resulting fact if it's not already known
                 if result not in fact_set:
                     fact_set.add(result)
-                    changed = True  #indicate that new facts were derived
+                    changed = True
 
-    #remove any empty strings from the fact set
-    fact_set.discard('')
-
-    #sort the derived facts for consistent output
-    derived_facts_list = sorted(fact_set, key=lambda x: (len(x), x))
-
-    #check if the query is satisfied and return the result
-    return f"> YES: " + ', '.join(derived_facts_list) if query_statement in fact_set else "NO"
+    fact_set.discard('')  # Clean up any empty strings
+    if query_statement in fact_set:
+        derived_facts_list = sorted(fact_set, key=lambda x: (len(x), x))
+        return f"> YES: " + ', '.join(derived_facts_list)
+    else:
+        return "NO"  # Print NO only if the query is not satisfied for valid Horn clauses
